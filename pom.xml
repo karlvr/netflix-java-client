@@ -3,7 +3,7 @@
 	<groupId>com.lysergicjava.nfclient</groupId>
 	<artifactId>netflix-java-client</artifactId>
 	<packaging>jar</packaging>
-	<version>2.2</version>
+	<version>2.3-SNAPSHOT</version>
 	<name>Netflix Java Client</name>
 	
 	<description>
@@ -19,12 +19,6 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 
-	<scm>
-		<connection>scm:hg:http://www.blueleftistconstructor.com/hg/nfjc</connection>
-		<developerConnection>scm:hg:http://www.blueleftistconstructor.com/hg/nfjc</developerConnection>
-		<url>http://www.blueleftistconstructor.com/hg/nfjc</url>
-	</scm>
-
 	<licenses>
 		<license>
 			<name>Apache 2</name>
@@ -33,16 +27,6 @@
 			<comments>A business-friendly OSS license</comments>
 		</license>
 	</licenses>
-	
-	<issueManagement>
-		<system>Atlassian Jira</system>
-		<url>http://jira.blueleftistconstructor.com/browse/NFJC</url>
-	</issueManagement>
-	
-	<ciManagement>
-		<system>Hudson</system>
-		<url>http://hudson.blueleftistconstructor.com/jobs/NFJC</url>
-	</ciManagement>
 
 	<developers>
 		<developer>
