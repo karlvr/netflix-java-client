@@ -274,9 +274,20 @@
 			<version>2.4</version>
 		</dependency>
 		<dependency>
+			<groupId>net.oauth</groupId>
+			<artifactId>oauth-core</artifactId>
+			<version>20081126</version>
+		</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>1.5.8</version>
+		</dependency>
+		<dependency>
 			<groupId>jaxen</groupId>
 			<artifactId>jaxen</artifactId>
 			<version>1.1.1</version>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>junit</groupId>
@@ -288,26 +299,7 @@
 			<groupId>org.jdom</groupId>
 			<artifactId>jdom</artifactId>
 			<version>1.1</version>
-		</dependency>
-		<dependency>
-			<groupId>net.oauth</groupId>
-			<artifactId>oauth-core</artifactId>
-			<version>20081126</version>
-		</dependency>
-		<dependency>
-			<!--
-				this is here to override xom's transitive dependency on a crappy,
-				old, broken version of icu4j. Once xom fixes their POM we can remove
-				this dependency.
-			-->
-			<groupId>com.ibm.icu</groupId>
-			<artifactId>icu4j</artifactId>
-			<version>3.8</version>
-		</dependency>
-		<dependency>
-			<groupId>org.slf4j</groupId>
-			<artifactId>slf4j-api</artifactId>
-			<version>1.5.8</version>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>ch.qos.logback</groupId>
@@ -322,6 +314,21 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
+	
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<!--
+					this is here to override xom's transitive dependency on a crappy,
+					old, broken version of icu4j. Once xom fixes their POM we can remove
+					this dependency.
+				-->
+				<groupId>com.ibm.icu</groupId>
+				<artifactId>icu4j</artifactId>
+				<version>3.8</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<repositories>
 		<repository>
