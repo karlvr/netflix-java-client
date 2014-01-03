@@ -4,4 +4,6 @@ Originally from http://www.blueleftistconstructor.com/projects/nfjc/current/ but
 
 ## Version History
 
-  * 2.3: Upgrade from HttpClient 3.1 to 4.3.1, OAuth 20081126 to 20100527. Tidy pom.xml.
+### v2.3
+
+Upgrade from HttpClient 3.1 to 4.3.1, OAuth 20081126 to 20100527. Tidy pom.xml.
