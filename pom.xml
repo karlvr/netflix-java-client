@@ -3,7 +3,7 @@
 	<groupId>com.lysergicjava.nfclient</groupId>
 	<artifactId>netflix-java-client</artifactId>
 	<packaging>jar</packaging>
-	<version>2.3-SNAPSHOT</version>
+	<version>2.3</version>
 	<name>Netflix Java Client</name>
 	
 	<description>
