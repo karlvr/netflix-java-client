@@ -27,7 +27,7 @@ public class APIEndpoints
     
     public static void initToDefaults()
     {
-    	BASE_URI = "http://api.netflix.com";
+    	BASE_URI = "http://api-public.netflix.com";
 		LOGIN_PATH = "http://api-user.netflix.com/oauth/login";
 		setDependentPaths();
     }
@@ -42,7 +42,7 @@ public class APIEndpoints
     	catch (Exception e) 
     	{
 			// can't read properties, use defaults
-    		BASE_URI = "http://api.netflix.com";
+    		BASE_URI = "http://api-public.netflix.com";
     		LOGIN_PATH = "http://api-user.netflix.com/oauth/login";
 		}
     	setDependentPaths();

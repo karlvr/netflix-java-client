@@ -1,14 +1,18 @@
 package com.netflix.api.client.dal;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.commons.httpclient.methods.DeleteMethod;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import static org.junit.Assert.*;
 
 import com.netflix.api.NetflixAPIException;
 import com.netflix.api.client.NetflixAPIClient;
@@ -52,12 +56,12 @@ public class MethodBuilderTest
 	@Test
 	public void testBuildConsumerKeyedGetMethod()
 	{
-		GetMethod method;
+		HttpGet method;
 		String uri = "http://foo.com";
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			method = builder.buildConsumerKeyedGetMethod(uri, parameters);
+			method = builder.buildConsumerKeyedHttpGet(uri, parameters);
 			assertNotNull("Got bupkis back from builder", method);
 		}
 		catch (Exception e)
@@ -72,12 +76,12 @@ public class MethodBuilderTest
 	@Test
 	public void testBuildConsumerSignedGetMethod()
 	{
-		GetMethod method;
+		HttpGet method;
 		String uri = "http://foo.com";
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			method = builder.buildConsumerSignedGetMethod(uri, parameters);
+			method = builder.buildConsumerKeyedHttpGet(uri, parameters);
 			assertNotNull("Got bupkis back from builder", method);
 		}
 		catch (Exception e)
@@ -92,12 +96,12 @@ public class MethodBuilderTest
 	@Test
 	public void testBuildConsumerSignedGetMethodWithQueryString()
 	{
-		GetMethod method;
+		HttpGet method;
 		String uri = "http://foo.com";
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			method = builder.buildConsumerSignedGetMethodWithQueryString(uri, parameters);
+			method = builder.buildConsumerSignedHttpGetWithQueryString(uri, parameters);
 			assertNotNull("Got bupkis back from builder", method);
 		}
 		catch (Exception e)
@@ -112,12 +116,12 @@ public class MethodBuilderTest
 	@Test
 	public void testBuildConsumerSignedPostMethod()
 	{
-		PostMethod method;
+		HttpPost method;
 		String uri = "http://foo.com";
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			method = builder.buildConsumerSignedPostMethod(uri, parameters);
+			method = builder.buildConsumerSignedHttpPost(uri, parameters);
 			assertNotNull("Got bupkis back from builder", method);
 		}
 		catch (Exception e)
@@ -132,7 +136,7 @@ public class MethodBuilderTest
 	@Test
 	public void testBuildCustomerAuthorizedGetMethod()
 	{
-		GetMethod method;
+		HttpGet method;
 		NetflixAPICustomer customer = new NetflixAPICustomer("foo", "bar");
 		OAuthAccessToken token = new OAuthAccessToken("oauth_token=foo&user_id=whee&oauth_token_secret=quietitsasecret");
 		customer.setAccessToken(token);
@@ -140,7 +144,7 @@ public class MethodBuilderTest
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			method = builder.buildCustomerAuthorizedGetMethod(uri, parameters, customer);
+			method = builder.buildCustomerAuthorizedHttpGet(uri, parameters, customer);
 			assertNotNull("Got bupkis back from builder", method);
 		}
 		catch (Exception e)
@@ -155,7 +159,7 @@ public class MethodBuilderTest
 	@Test
 	public void testBuildCustomerAuthorizedPostMethod()
 	{
-		PostMethod method;
+		HttpPost method;
 		NetflixAPICustomer customer = new NetflixAPICustomer("foo", "bar");
 		OAuthAccessToken token = new OAuthAccessToken("oauth_token=foo&user_id=whee&oauth_token_secret=quietitsasecret");
 		customer.setAccessToken(token);
@@ -163,7 +167,7 @@ public class MethodBuilderTest
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			method = builder.buildCustomerAuthorizedPostMethod(uri, parameters, customer);
+			method = builder.buildCustomerAuthorizedHttpPost(uri, parameters, customer);
 			assertNotNull("Got bupkis back from builder", method);
 		}
 		catch (Exception e)
@@ -178,7 +182,7 @@ public class MethodBuilderTest
 	@Test
 	public void testBuildCustomerAuthorizedDeleteMethod()
 	{
-		DeleteMethod method;
+		HttpDelete method;
 		NetflixAPICustomer customer = new NetflixAPICustomer("biz", "baz");
 		OAuthAccessToken token = new OAuthAccessToken("oauth_token=foo&user_id=whee&oauth_token_secret=quietitsasecret");
 		customer.setAccessToken(token);
@@ -186,7 +190,7 @@ public class MethodBuilderTest
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			method = builder.buildCustomerAuthorizedDeleteMethod(uri, parameters, customer);
+			method = builder.buildCustomerAuthorizedHttpDelete(uri, parameters, customer);
 			assertNotNull("Got bupkis back from builder", method);
 		}
 		catch (Exception e)
@@ -206,7 +210,7 @@ public class MethodBuilderTest
 		Map<String, String> parameters = builder.getDefaultOAuthParameters();
 		try
 		{
-			builder.buildCustomerAuthorizedGetMethod(uri, parameters, customer);
+			builder.buildCustomerAuthorizedHttpGet(uri, parameters, customer);
 		}
 		catch (Exception e)
 		{

@@ -1,16 +1,21 @@
 package com.netflix.api.client;
 
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.commons.httpclient.Header;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpMethod;
-import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
-import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.http.Header;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.conn.ClientConnectionManager;
+import org.apache.http.impl.client.ContentEncodingHttpClient;
+import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,7 +95,7 @@ public class NetflixAPIClient
 	public NetflixAPIClient()
 	{
 		// no-arg constructor
-		this.httpClient = new HttpClient();
+		this.httpClient = createHttpClient();
 		this.methodBuilder = new HttpMethodBuilder(this);
 		APIEndpoints.initToDefaults();
 	}
@@ -105,7 +110,7 @@ public class NetflixAPIClient
 	{
 		this.consumerKey = consumerKey;
 		this.consumerSecret = consumerSecret;
-		this.httpClient = new HttpClient();
+		this.httpClient = createHttpClient();
 		this.methodBuilder = new HttpMethodBuilder(this);
 		APIEndpoints.initToDefaults();
 	}
@@ -117,7 +122,6 @@ public class NetflixAPIClient
 	 * @param consumerSecret
 	 * @param props
 	 */
-	@SuppressWarnings("deprecation")
 	public NetflixAPIClient(String consumerKey, String consumerSecret, Properties props)
 	{
 		this.consumerKey = consumerKey;
@@ -127,19 +131,27 @@ public class NetflixAPIClient
 			int threads = Integer.decode(props.getProperty("THREADS"));
 			if (threads > 0)
 			{
-				MultiThreadedHttpConnectionManager cm = new MultiThreadedHttpConnectionManager();
-				cm.setMaxTotalConnections(threads);
-				cm.setMaxConnectionsPerHost(threads);
-				this.httpClient = new HttpClient(cm);
+				ThreadSafeClientConnManager cm = new ThreadSafeClientConnManager();
+				cm.setMaxTotal(threads);
+				cm.setDefaultMaxPerRoute(threads);
+				this.httpClient = createHttpClient(cm);
 			}
-			else this.httpClient = new HttpClient();
+			else this.httpClient = createHttpClient();
 		}
 		catch (Exception e) 
 		{
-			this.httpClient = new HttpClient();
+			this.httpClient = createHttpClient();
 		}
 		this.methodBuilder = new HttpMethodBuilder(this, props);
 		APIEndpoints.init(props);
+	}
+
+	protected HttpClient createHttpClient() {
+		return new ContentEncodingHttpClient();
+	}
+
+	protected HttpClient createHttpClient(ClientConnectionManager cm) {
+		return new ContentEncodingHttpClient(cm, null);
 	}
 	
 	/**
@@ -151,11 +163,11 @@ public class NetflixAPIClient
 	 * @param cm
 	 */
 	public NetflixAPIClient(String consumerKey, String consumerSecret, 
-			Properties props, MultiThreadedHttpConnectionManager cm)
+			Properties props, ClientConnectionManager cm)
 	{
 		this.consumerKey = consumerKey;
 		this.consumerSecret = consumerSecret;
-		this.httpClient = new HttpClient(cm);
+		this.httpClient = createHttpClient(cm);
 		this.methodBuilder = new HttpMethodBuilder(this, props);
 		APIEndpoints.init(props);
 	}
@@ -173,25 +185,30 @@ public class NetflixAPIClient
 	 */
 	public NetflixAPIResponse makeUnsignedApiCall(String uri, Map<String, String> callParameters) throws Exception
 	{
-		NetflixAPIResponse response = new NetflixAPIResponse();
-		GetMethod method = null;
+		
+		HttpGet method = null;
 		if (callParameters == null)
 			callParameters = new HashMap<String, String>();
 		callParameters.putAll(methodBuilder.getDefaultOAuthParameters());
 		
-		method = methodBuilder.buildConsumerKeyedGetMethod(uri, callParameters);
-		httpClient.executeMethod(method);
-		response.setResponseBody(method.getResponseBodyAsString());
-		response.setStatusCode(method.getStatusCode());
-		response.setStatusLine(method.getStatusLine().toString());
-		response.setResponseHeaders(this.resolveResponseHeaders(method));
-		method.releaseConnection();
+		method = methodBuilder.buildConsumerKeyedHttpGet(uri, callParameters);
+		HttpResponse httpResponse = httpClient.execute(method);
+		NetflixAPIResponse response = makeNetflixAPIResponse(httpResponse);
 		
 		if (logger.isDebugEnabled())
 		{
 			response.setExecutionSummary("Calling [" + uri + "] resulted in status code [" + response.getStatusLine() + "] and response\n" + response.getResponseBody());
 			logger.debug(response.getExecutionSummary());
 		}
+		return response;
+	}
+
+	private NetflixAPIResponse makeNetflixAPIResponse(HttpResponse httpResponse) throws IOException {
+		NetflixAPIResponse response = new NetflixAPIResponse();
+		response.setResponseBody(EntityUtils.toString(httpResponse.getEntity()));
+		response.setStatusCode(httpResponse.getStatusLine().getStatusCode());
+		response.setStatusLine(httpResponse.getStatusLine().toString());
+		response.setResponseHeaders(this.resolveResponseHeaders(httpResponse));
 		return response;
 	}
 	
@@ -208,24 +225,19 @@ public class NetflixAPIClient
 	 */
 	public NetflixAPIResponse makeConsumerSignedApiCall(String uri, Map<String, String> callParameters, String methodType) throws Exception
 	{
-		NetflixAPIResponse response = new NetflixAPIResponse();
-		HttpMethod method = null;
+		HttpRequestBase method = null;
 		if (callParameters == null)
 			callParameters = new HashMap<String, String>();
 		callParameters.putAll(methodBuilder.getDefaultOAuthParameters());
 		
 		if (methodType.equalsIgnoreCase(GET_METHOD_TYPE))
-			method = methodBuilder.buildConsumerSignedGetMethod(uri, callParameters);
+			method = methodBuilder.buildConsumerSignedHttpGet(uri, callParameters);
 		else if (methodType.equalsIgnoreCase(POST_METHOD_TYPE))
-			method = methodBuilder.buildConsumerSignedPostMethod(uri, callParameters);
+			method = methodBuilder.buildConsumerSignedHttpPost(uri, callParameters);
 		else throw new NetflixAPIException("No valid HTTP method specified: must be GET or POST for consumer-signed calls.");
 		
-		httpClient.executeMethod(method);
-		response.setResponseBody(method.getResponseBodyAsString());
-		response.setStatusCode(method.getStatusCode());
-		response.setStatusLine(method.getStatusLine().toString());
-		response.setResponseHeaders(this.resolveResponseHeaders(method));
-		method.releaseConnection();
+		HttpResponse httpResponse = httpClient.execute(method);
+		NetflixAPIResponse response = makeNetflixAPIResponse(httpResponse);
 		
 		if (logger.isDebugEnabled())
 		{
@@ -250,26 +262,21 @@ public class NetflixAPIClient
 	 */
 	public NetflixAPIResponse makeCustomerAuthorizedApiCall(String uri, NetflixAPICustomer customer, Map<String, String> callParameters, String methodType) throws Exception
 	{
-		NetflixAPIResponse response = new NetflixAPIResponse();
-		HttpMethod method = null;
+		HttpRequestBase method = null;
 		if (callParameters == null)
 			callParameters = new HashMap<String, String>();
 		callParameters.putAll(methodBuilder.getDefaultOAuthParameters());
 		
 		if (methodType.equalsIgnoreCase(GET_METHOD_TYPE))
-			method = methodBuilder.buildCustomerAuthorizedGetMethod(uri, callParameters, customer);
+			method = methodBuilder.buildCustomerAuthorizedHttpGet(uri, callParameters, customer);
 		else if (methodType.equalsIgnoreCase(POST_METHOD_TYPE))
-			method = methodBuilder.buildCustomerAuthorizedPostMethod(uri, callParameters, customer);
+			method = methodBuilder.buildCustomerAuthorizedHttpPost(uri, callParameters, customer);
 		else if (methodType.equalsIgnoreCase(DELETE_METHOD_TYPE))
-			method = methodBuilder.buildCustomerAuthorizedDeleteMethod(uri, callParameters, customer);
+			method = methodBuilder.buildCustomerAuthorizedHttpDelete(uri, callParameters, customer);
 		else throw new NetflixAPIException("No valid HTTP method specified: must be GET, POST or DELETE for customer authorized calls.");
 		
-		httpClient.executeMethod(method);
-		response.setResponseBody(method.getResponseBodyAsString());
-		response.setStatusCode(method.getStatusCode());
-		response.setStatusLine(method.getStatusLine().toString());
-		response.setResponseHeaders(this.resolveResponseHeaders(method));
-		method.releaseConnection();
+		HttpResponse httpResponse = httpClient.execute(method);
+		NetflixAPIResponse response = makeNetflixAPIResponse(httpResponse);
 		
 		if (logger.isDebugEnabled())
 		{
@@ -295,26 +302,21 @@ public class NetflixAPIClient
 	public NetflixAPIResponse makeCustomerAuthorizedApiCall(String uri, NetflixAPICustomer customer, Map<String, String> callParameters,
 			Map<String, String> requestHeaders, String methodType) throws Exception
 	{
-		NetflixAPIResponse response = new NetflixAPIResponse();
-		HttpMethod method = null;
+		HttpRequestBase method = null;
 		if (callParameters == null)
 			callParameters = new HashMap<String, String>();
 		callParameters.putAll(methodBuilder.getDefaultOAuthParameters());
 		
 		if (methodType.equalsIgnoreCase(GET_METHOD_TYPE))
-			method = methodBuilder.buildCustomerAuthorizedGetMethod(uri, callParameters, customer, requestHeaders);
+			method = methodBuilder.buildCustomerAuthorizedHttpGet(uri, callParameters, customer, requestHeaders);
 		else if (methodType.equalsIgnoreCase(POST_METHOD_TYPE))
-			method = methodBuilder.buildCustomerAuthorizedPostMethod(uri, callParameters, customer, requestHeaders);
+			method = methodBuilder.buildCustomerAuthorizedHttpPost(uri, callParameters, customer, requestHeaders);
 		else if (methodType.equalsIgnoreCase(DELETE_METHOD_TYPE))
-			method = methodBuilder.buildCustomerAuthorizedDeleteMethod(uri, callParameters, customer, requestHeaders);
+			method = methodBuilder.buildCustomerAuthorizedHttpDelete(uri, callParameters, customer, requestHeaders);
 		else throw new NetflixAPIException("No valid HTTP method specified: must be GET, POST or DELETE for customer authorized calls.");
 		
-		httpClient.executeMethod(method);
-		response.setResponseBody(method.getResponseBodyAsString());
-		response.setStatusCode(method.getStatusCode());
-		response.setStatusLine(method.getStatusLine().toString());
-		response.setResponseHeaders(this.resolveResponseHeaders(method));
-		method.releaseConnection();
+		HttpResponse httpResponse = httpClient.execute(method);
+		NetflixAPIResponse response = makeNetflixAPIResponse(httpResponse);
 		
 		if (logger.isDebugEnabled())
 		{
@@ -329,18 +331,13 @@ public class NetflixAPIClient
 	 * @param method
 	 * @return
 	 */
-	public NetflixAPIResponse executeCustomMethod(HttpMethod method) throws Exception
+	public NetflixAPIResponse executeCustomMethod(HttpRequestBase method) throws Exception
 	{
-		NetflixAPIResponse response = new NetflixAPIResponse();
-		httpClient.executeMethod(method);
-		response.setResponseBody(method.getResponseBodyAsString());
-		response.setStatusCode(method.getStatusCode());
-		response.setStatusLine(method.getStatusLine().toString());
-		response.setResponseHeaders(this.resolveResponseHeaders(method));
+		HttpResponse httpResponse = httpClient.execute(method);
+		NetflixAPIResponse response = makeNetflixAPIResponse(httpResponse);
 		String executionSummary = "Execution summary:\n" + response.getStatusLine() + "\n" +
 			response.getResponseBody();
 		response.setExecutionSummary(executionSummary);
-		method.releaseConnection();
 		
 		if (logger.isDebugEnabled())
 		{
@@ -426,10 +423,10 @@ public class NetflixAPIClient
 	 * @param method
 	 * @return
 	 */
-	protected Map<String, String> resolveResponseHeaders(HttpMethod method)
+	protected Map<String, String> resolveResponseHeaders(HttpResponse response)
 	{
 		Map<String, String> rh = new HashMap<String, String>();
-		Header[] headers = method.getResponseHeaders();
+		Header[] headers = response.getAllHeaders();
 		for (int i = 0; i < headers.length; i++)
 		{
 			rh.put(headers[i].getName(), headers[i].getValue());

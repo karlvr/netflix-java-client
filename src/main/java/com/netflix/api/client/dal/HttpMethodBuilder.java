@@ -4,18 +4,23 @@ import java.net.URLEncoder;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 
 import net.oauth.OAuth;
 
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpMethod;
-import org.apache.commons.httpclient.cookie.CookiePolicy;
-import org.apache.commons.httpclient.methods.DeleteMethod;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.params.HttpMethodParams;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.params.CookiePolicy;
+import org.apache.http.client.params.HttpClientParams;
+import org.apache.http.params.HttpParams;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,18 +95,14 @@ public class HttpMethodBuilder
      * @param parameters - map of request parameters to send in request.
      * @return - GET method with valid auth header set. 
      */
-	public GetMethod buildConsumerKeyedGetMethod(String uri, Map<String, String> parameters) throws Exception
+	public HttpGet buildConsumerKeyedHttpGet(String uri, Map<String, String> parameters) throws Exception
 	{
-    	GetMethod method = this.newGetMethod(uri);
-    	method.setDoAuthentication(false);
-    	String queryString = this.createNormalizedQueryString((HashMap<String, String>) parameters);
-    	
-    	method.setQueryString(queryString);
+    	HttpGet method = this.newHttpGet(createURIWithQueryString(uri, parameters));
+    	HttpClientParams.setAuthenticating(method.getParams(), false);
     	
     	if (logger.isDebugEnabled())
     	{
-    		String message = "Created method [ GET " + uri 
-    		+ "\n" + queryString + " ]";
+    		String message = "Created method [ GET " + method.getURI() + " ]";
     		logger.debug(message);
     	}
     	return method;
@@ -121,18 +122,17 @@ public class HttpMethodBuilder
      * @return - GET method with valid auth header set. 
      * @throws Exception - if signature generation fails
      */
-    public GetMethod buildConsumerSignedGetMethod(String uri, Map<String, String> parameters) throws Exception
+    public HttpGet buildConsumerSignedHttpGet(String uri, Map<String, String> parameters) throws Exception
     {
-    	GetMethod method = this.newGetMethod(uri);
-    	method.setDoAuthentication(true);
-    	
     	String signatureBaseString = OAuthUtils.getSignatureBaseString("GET", uri, parameters);
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), null);
     	
     	parameters.put("oauth_signature",signatureParameter);
-    	String authHeader = this.createAuthorizationHeader((HashMap<String, String>) parameters);
-    	method.setQueryString(this.createNonOAuthQueryString(parameters));
-    	method.setRequestHeader("Authorization", authHeader);
+    	String authHeader = this.createAuthorizationHeader(parameters);
+    	
+    	HttpGet method = this.newHttpGet(createURIWithQueryString(uri, withoutOauthParams(parameters)));
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
+    	method.setHeader("Authorization", authHeader);
     	
     	if (logger.isDebugEnabled())
     	{
@@ -159,23 +159,18 @@ public class HttpMethodBuilder
      * @return - GET method with aut params encoding as url parameters. 
      * @throws Exception - if signature generation fails
      */
-    public GetMethod buildConsumerSignedGetMethodWithQueryString(String uri, Map<String, String> parameters) throws Exception
+    public HttpGet buildConsumerSignedHttpGetWithQueryString(String uri, Map<String, String> parameters) throws Exception
     {
-    	GetMethod method = this.newGetMethod(uri);
-    	method.setDoAuthentication(true);
-    	
     	String signatureBaseString = OAuthUtils.getSignatureBaseString("GET", uri, parameters);
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), null);
     	
     	parameters.put("oauth_signature", signatureParameter);
-    	String queryString = this.createNormalizedQueryString((HashMap<String, String>) parameters);
-    	
-    	method.setQueryString(queryString);
+    	HttpGet method = this.newHttpGet(createURIWithQueryString(uri, parameters));
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
     	
     	if (logger.isDebugEnabled())
     	{
-    		String message = "Created method [ GET " + uri 
-    		+ "?" + queryString + " ]";
+    		String message = "Created method [ GET " + method.getURI() + " ]";
     		logger.debug(message);
     	}
     	
@@ -196,18 +191,18 @@ public class HttpMethodBuilder
      * @return - POST method with valid auth header set. 
      * @throws Exception - if signature generation fails
      */
-    public PostMethod buildConsumerSignedPostMethod(String uri, Map<String, String> parameters) throws Exception
+    public HttpPost buildConsumerSignedHttpPost(String uri, Map<String, String> parameters) throws Exception
     {
-    	PostMethod method = this.newPostMethod(uri);
-    	method.setDoAuthentication(true);
-    	
     	String signatureBaseString = OAuthUtils.getSignatureBaseString("POST", uri, parameters);
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), null);
     	
     	parameters.put("oauth_signature",signatureParameter);
-    	String authHeader = this.createAuthorizationHeader((HashMap<String, String>) parameters);
-    	this.setNonOauthParams(method, parameters);
-    	method.setRequestHeader("Authorization", authHeader);
+    	String authHeader = this.createAuthorizationHeader(parameters);
+    	
+    	HttpPost method = this.newHttpPost(createURIWithQueryString(uri, withoutOauthParams(parameters)));
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
+    	
+    	method.setHeader("Authorization", authHeader);
     	
     	if (logger.isDebugEnabled())
     	{
@@ -231,12 +226,12 @@ public class HttpMethodBuilder
      * @return
      * @throws Exception
      */
-    public GetMethod buildCustomerAuthorizedGetMethod(String uri, Map<String, String> parameters, NetflixAPICustomer customer) throws Exception
+    public HttpGet buildCustomerAuthorizedHttpGet(String uri, Map<String, String> parameters, NetflixAPICustomer customer) throws Exception
     {
     	OAuthAccessToken accessToken = customer.getAccessToken();
     	if (accessToken == null)
     		throw new NetflixAPIException("Customer has no access token.");
-    	return this.buildConsumerSignedGetMethodWithAccessSecret(uri, parameters, accessToken);
+    	return this.buildConsumerSignedHttpGetWithAccessSecret(uri, parameters, accessToken);
     }
 
     /**
@@ -250,12 +245,12 @@ public class HttpMethodBuilder
      * @return
      * @throws Exception
      */
-    public PostMethod buildCustomerAuthorizedPostMethod(String uri, Map<String, String> parameters, NetflixAPICustomer customer) throws Exception
+    public HttpPost buildCustomerAuthorizedHttpPost(String uri, Map<String, String> parameters, NetflixAPICustomer customer) throws Exception
     {
     	OAuthAccessToken accessToken = customer.getAccessToken();
     	if (accessToken == null)
     		throw new NetflixAPIException("Customer has no access token.");
-    	return this.buildConsumerSignedPostMethodWithAccessSecret(uri, parameters, accessToken);
+    	return this.buildConsumerSignedHttpPostWithAccessSecret(uri, parameters, accessToken);
     }
     
     /**
@@ -269,12 +264,12 @@ public class HttpMethodBuilder
      * @return
      * @throws Exception
      */
-    public DeleteMethod buildCustomerAuthorizedDeleteMethod(String uri, Map<String, String> parameters, NetflixAPICustomer customer) throws Exception
+    public HttpDelete buildCustomerAuthorizedHttpDelete(String uri, Map<String, String> parameters, NetflixAPICustomer customer) throws Exception
     {
     	OAuthAccessToken accessToken = customer.getAccessToken();
     	if (accessToken == null)
     		throw new NetflixAPIException("Customer has no access token.");
-    	return this.buildConsumerSignedDeleteMethodWithAccessSecret(uri, parameters, accessToken);
+    	return this.buildConsumerSignedHttpDeleteWithAccessSecret(uri, parameters, accessToken);
     }
     
     /**
@@ -288,13 +283,13 @@ public class HttpMethodBuilder
      * @return
      * @throws Exception
      */
-    public DeleteMethod buildCustomerAuthorizedDeleteMethod(String uri, Map<String, String> parameters, NetflixAPICustomer customer, 
+    public HttpDelete buildCustomerAuthorizedHttpDelete(String uri, Map<String, String> parameters, NetflixAPICustomer customer, 
     		Map<String, String> requestHeaders) throws Exception
     {
     	OAuthAccessToken accessToken = customer.getAccessToken();
     	if (accessToken == null)
     		throw new NetflixAPIException("Customer has no access token.");
-    	return (DeleteMethod) this.applyRequestHeadersToMethod(this.buildConsumerSignedDeleteMethodWithAccessSecret(uri, parameters, accessToken), requestHeaders);
+    	return (HttpDelete) this.applyRequestHeadersToMethod(this.buildConsumerSignedHttpDeleteWithAccessSecret(uri, parameters, accessToken), requestHeaders);
     }
     
     /**
@@ -308,13 +303,13 @@ public class HttpMethodBuilder
      * @return
      * @throws Exception
      */
-    public GetMethod buildCustomerAuthorizedGetMethod(String uri, Map<String, String> parameters, NetflixAPICustomer customer,
+    public HttpGet buildCustomerAuthorizedHttpGet(String uri, Map<String, String> parameters, NetflixAPICustomer customer,
     		Map<String, String> requestHeaders) throws Exception
     {
     	OAuthAccessToken accessToken = customer.getAccessToken();
     	if (accessToken == null)
     		throw new NetflixAPIException("Customer has no access token.");
-    	return (GetMethod) this.applyRequestHeadersToMethod(this.buildConsumerSignedGetMethodWithAccessSecret(uri, parameters, accessToken), requestHeaders);
+    	return (HttpGet) this.applyRequestHeadersToMethod(this.buildConsumerSignedHttpGetWithAccessSecret(uri, parameters, accessToken), requestHeaders);
     }
 
     /**
@@ -328,13 +323,13 @@ public class HttpMethodBuilder
      * @return
      * @throws Exception
      */
-    public PostMethod buildCustomerAuthorizedPostMethod(String uri, Map<String, String> parameters, NetflixAPICustomer customer,
+    public HttpPost buildCustomerAuthorizedHttpPost(String uri, Map<String, String> parameters, NetflixAPICustomer customer,
     		Map<String, String> requestHeaders) throws Exception
     {
     	OAuthAccessToken accessToken = customer.getAccessToken();
     	if (accessToken == null)
     		throw new NetflixAPIException("Customer has no access token.");
-    	return (PostMethod) this.applyRequestHeadersToMethod(this.buildConsumerSignedPostMethodWithAccessSecret(uri, parameters, accessToken), requestHeaders);
+    	return (HttpPost) this.applyRequestHeadersToMethod(this.buildConsumerSignedHttpPostWithAccessSecret(uri, parameters, accessToken), requestHeaders);
     }
     
 	/**
@@ -361,26 +356,22 @@ public class HttpMethodBuilder
      * Builds the method used to obtain access tokens.
      * @param uri
      * @param parameters
-     * @return GetMethod - method that when called will return an access token.
+     * @return HttpGet - method that when called will return an access token.
      * @throws Exception
      */
-    private GetMethod buildAccessTokenRequestMethod(String uri, Map<String, String> parameters, OAuthRequestToken authorizedRequestToken) throws Exception
+    private HttpGet buildAccessTokenRequestMethod(String uri, Map<String, String> parameters, OAuthRequestToken authorizedRequestToken) throws Exception
     {
-    	GetMethod method = (GetMethod) this.newGetMethod(uri);
-    	method.setDoAuthentication(true);
-    	
     	String signatureBaseString = OAuthUtils.getSignatureBaseString("GET", uri, parameters);
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), authorizedRequestToken.getTokenSecret());
     	
     	parameters.put("oauth_signature", signatureParameter);
-    	String queryString = this.createNormalizedQueryString((HashMap<String, String>) parameters);
     	
-    	method.setQueryString(queryString);
+    	HttpGet method = this.newHttpGet(createURIWithQueryString(uri, parameters));
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
     	
     	if (logger.isDebugEnabled())
     	{
-    		String message = "Created method [ GET " + uri 
-    		+ "?" + queryString + " ]";
+    		String message = "Created method [ GET " + method.getURI() + " ]";
     		logger.debug(message);
     	}
     	
@@ -388,17 +379,14 @@ public class HttpMethodBuilder
     }
     
     /**
-     * Builds a GetMethod suitable for full-security OAuth requests.
+     * Builds a HttpGet suitable for full-security OAuth requests.
      * @param uri
      * @param parameters
-     * @return GetMethod 
+     * @return HttpGet 
      * @throws Exception
      */
-    protected GetMethod buildConsumerSignedGetMethodWithAccessSecret(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
+    protected HttpGet buildConsumerSignedHttpGetWithAccessSecret(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
     {
-    	GetMethod method = (GetMethod) this.newGetMethod(uri);
-    	method.setDoAuthentication(true);
-    	
     	parameters.put("oauth_timestamp", OAuthUtils.getNewOAuthTimeStamp());
     	parameters.put("oauth_nonce", OAuthUtils.getNewNonceValue());
     	parameters.put("oauth_token", accessToken.getTokenText());
@@ -407,14 +395,13 @@ public class HttpMethodBuilder
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), accessToken.getTokenSecret());
     	
     	parameters.put("oauth_signature", signatureParameter);
-    	String queryString = this.createNormalizedQueryString((HashMap<String, String>) parameters);
     	
-    	method.setQueryString(queryString);
+    	HttpGet method = this.newHttpGet(createURIWithQueryString(uri, parameters));
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
     	
     	if (logger.isDebugEnabled())
     	{
-    		String message = "Created method [ GET " + uri 
-    		+ "?" + queryString + " ]";
+    		String message = "Created method [ GET " + method.getURI() + " ]";
     		logger.debug(message);
     	}
     	
@@ -422,17 +409,14 @@ public class HttpMethodBuilder
     }
     
     /**
-     * Builds a PostMethod suitable for full-security OAuth requests.
+     * Builds a HttpPost suitable for full-security OAuth requests.
      * @param uri
      * @param parameters
      * @return
      * @throws Exception
      */
-    protected PostMethod buildConsumerSignedPostMethodWithAccessSecret(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
+    protected HttpPost buildConsumerSignedHttpPostWithAccessSecret(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
     {
-    	PostMethod method = new PostMethod(uri);
-    	method.setDoAuthentication(true);
-    	
     	parameters.put("oauth_timestamp", OAuthUtils.getNewOAuthTimeStamp());
     	parameters.put("oauth_nonce", OAuthUtils.getNewNonceValue());
     	parameters.put("oauth_token", accessToken.getTokenText());
@@ -441,10 +425,12 @@ public class HttpMethodBuilder
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), accessToken.getTokenSecret());
     	
     	parameters.put("oauth_signature", signatureParameter);
-    	String authHeader = this.createAuthorizationHeader((HashMap<String, String>) parameters);
-    	this.setNonOauthParams(method, parameters);
+    	String authHeader = this.createAuthorizationHeader(parameters);
     	
-    	method.setRequestHeader("Authorization", authHeader);
+    	HttpPost method = new HttpPost(createURIWithQueryString(uri, withoutOauthParams(parameters)));
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
+    	
+    	method.setHeader("Authorization", authHeader);
     	
     	if (logger.isDebugEnabled())
     	{
@@ -463,11 +449,8 @@ public class HttpMethodBuilder
      * @return
      * @throws Exception
      */
-    public PostMethod buildConsumerSignedPostMethodWithAccessSecretAndQueryString(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
+    public HttpPost buildConsumerSignedHttpPostWithAccessSecretAndQueryString(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
     {
-    	PostMethod method = new PostMethod(uri);
-    	method.setDoAuthentication(true);
-    	
     	parameters.put("oauth_timestamp", OAuthUtils.getNewOAuthTimeStamp());
     	parameters.put("oauth_nonce", OAuthUtils.getNewNonceValue());
     	parameters.put("oauth_token", accessToken.getTokenText());
@@ -476,13 +459,13 @@ public class HttpMethodBuilder
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), accessToken.getTokenSecret());
     	
     	parameters.put("oauth_signature", signatureParameter);
-    	String queryString = this.createNormalizedQueryString((HashMap<String, String>) parameters);
     	
-    	method.setQueryString(queryString);
+    	HttpPost method = new HttpPost(createURIWithQueryString(uri, parameters));
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
     	
     	if (logger.isDebugEnabled())
     	{
-    		String message = "Created method [ POST " + uri + "]";
+    		String message = "Created method [ POST " + method.getURI() + "]";
     		logger.debug(message);
     	}
     	
@@ -490,16 +473,16 @@ public class HttpMethodBuilder
     }
     
     /**
-     * Builds a DeleteMethod suitable for full-security OAuth requests.
+     * Builds a HttpDelete suitable for full-security OAuth requests.
      * @param uri
      * @param parameters
      * @return
      * @throws Exception
      */
-    protected DeleteMethod buildConsumerSignedDeleteMethodWithAccessSecret(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
+    protected HttpDelete buildConsumerSignedHttpDeleteWithAccessSecret(String uri, Map<String, String> parameters, OAuthAccessToken accessToken) throws Exception
     {
-    	DeleteMethod method = this.newDeleteMethod(uri);
-    	method.setDoAuthentication(true);
+    	HttpDelete method = this.newHttpDelete(uri);
+    	HttpClientParams.setAuthenticating(method.getParams(), true);
     	
     	parameters.put("oauth_timestamp", OAuthUtils.getNewOAuthTimeStamp());
     	parameters.put("oauth_nonce", OAuthUtils.getNewNonceValue());
@@ -509,9 +492,9 @@ public class HttpMethodBuilder
     	String signatureParameter = OAuthUtils.getHMACSHASignature(signatureBaseString, this.netflixAPIClient.getConsumerSecret(), accessToken.getTokenSecret());
     	
     	parameters.put("oauth_signature", signatureParameter);
-    	String authHeader = this.createAuthorizationHeader((HashMap<String, String>) parameters);
+    	String authHeader = this.createAuthorizationHeader(parameters);
     	
-    	method.setRequestHeader("Authorization", authHeader);
+    	method.setHeader("Authorization", authHeader);
     	
     	if (logger.isDebugEnabled())
     	{
@@ -550,12 +533,12 @@ public class HttpMethodBuilder
     	OAuthRequestToken token = null;
     	Map<String, String> parameters = this.getDefaultOAuthParameters();
     	String uri = APIEndpoints.REQUEST_TOKEN_PATH;
-    	GetMethod getMethod = this.buildConsumerSignedGetMethodWithQueryString(uri, parameters);
+    	HttpGet getMethod = this.buildConsumerSignedHttpGetWithQueryString(uri, parameters);
     	if (requestHeaders != null)
     	{
     		for (String header : requestHeaders.keySet())
     		{
-    			getMethod.addRequestHeader(header, requestHeaders.get(header));
+    			getMethod.addHeader(header, requestHeaders.get(header));
     		}
     	}
     	NetflixAPIResponse response = this.netflixAPIClient.executeCustomMethod(getMethod);
@@ -564,7 +547,6 @@ public class HttpMethodBuilder
     		logger.debug(response.getResponseBody());
     	}
     	token = new OAuthRequestToken(response.getResponseBody());
-    	getMethod.releaseConnection();
     	return token;
     }
     
@@ -578,24 +560,26 @@ public class HttpMethodBuilder
      */
     private void authorizeRequestToken(OAuthRequestToken requestToken, NetflixAPICustomer customer) throws Exception
 	{
-    	PostMethod loginMethod = this.buildLoginMethod(APIEndpoints.LOGIN_PATH);
-    	loginMethod.addParameter("oauth_token", requestToken.getTokenText());
-    	loginMethod.addParameter("oauth_consumer_key", this.netflixAPIClient.getConsumerKey());
-    	loginMethod.addParameter("application_name", requestToken.getApplicationName());
-    	loginMethod.addParameter("name", customer.getUsername());
-    	loginMethod.addParameter("password", customer.getPassword());
-    	loginMethod.addParameter("accept_tos", "true");
-    	loginMethod.addParameter("output", "pox");
-    	loginMethod.addParameter("oauth_callback", "");
-    	httpClient.executeMethod(loginMethod);
+    	Map<String, String> parameters = new HashMap<String, String>();
+    	parameters.put("oauth_token", requestToken.getTokenText());
+    	parameters.put("oauth_consumer_key", this.netflixAPIClient.getConsumerKey());
+    	parameters.put("application_name", requestToken.getApplicationName());
+    	parameters.put("name", customer.getUsername());
+    	parameters.put("password", customer.getPassword());
+    	parameters.put("accept_tos", "true");
+    	parameters.put("output", "pox");
+    	parameters.put("oauth_callback", "");
+    	
+    	HttpPost loginMethod = this.buildLoginMethod(createURIWithQueryString(APIEndpoints.LOGIN_PATH, parameters));
+    	
+    	HttpResponse httpResponse = httpClient.execute(loginMethod);
     	
     	if (logger.isDebugEnabled())
     	{
-    		logger.debug("Response from authorize token: " + loginMethod.getResponseBodyAsString());
+    		logger.debug("Response from authorize token: " + EntityUtils.toString(httpResponse.getEntity()));
     	}
-    	if (loginMethod.getStatusCode() != 200)
+    	if (httpResponse.getStatusLine().getStatusCode() != HttpStatus.SC_OK)
     		throw new NetflixAPIException(NetflixAPIException.LOGIN_FAILED);
-    	loginMethod.releaseConnection();
 	}
     
     /**
@@ -604,9 +588,9 @@ public class HttpMethodBuilder
      * @param parameters
      * @return
      */
-    private PostMethod buildLoginMethod(String uri)
+    private HttpPost buildLoginMethod(String uri)
 	{
-    	PostMethod method = (PostMethod) this.newPostMethod(uri);
+    	HttpPost method = this.newHttpPost(uri);
     	
     	if (logger.isDebugEnabled())
     	{
@@ -644,26 +628,25 @@ public class HttpMethodBuilder
     	Map<String, String> parameters = this.getDefaultOAuthParameters();
     	parameters.put("oauth_token", authorizedRequestToken.getTokenText());
     	
-    	GetMethod exchangeMethod = this.buildAccessTokenRequestMethod(uri, parameters, authorizedRequestToken);
+    	HttpGet exchangeMethod = this.buildAccessTokenRequestMethod(uri, parameters, authorizedRequestToken);
     	if (requestHeaders != null)
     	{
     		for (String header : requestHeaders.keySet())
     		{
-    			exchangeMethod.setRequestHeader(header, requestHeaders.get(header));
+    			exchangeMethod.setHeader(header, requestHeaders.get(header));
     		}
     	}
     	
-    	httpClient.executeMethod(exchangeMethod);
-    	String response = exchangeMethod.getResponseBodyAsString();
-    	statusCode = exchangeMethod.getStatusCode();
-    	if (statusCode != 200)
+    	HttpResponse httpResponse = httpClient.execute(exchangeMethod);
+    	String response = EntityUtils.toString(httpResponse.getEntity());
+    	statusCode = httpResponse.getStatusLine().getStatusCode();
+    	if (statusCode != HttpStatus.SC_OK)
     	{
     		String message = "Exchange of request token [ " + authorizedRequestToken.getTokenText() + " ] FAILED with " +
-    				"response [ " + exchangeMethod.getResponseBodyAsString() + " ]";
+    				"response [ " + response + " ]";
     		logger.error(message);
     		oat = new OAuthAccessToken();
     		oat.setErrorCause(message);
-    		exchangeMethod.releaseConnection();
     		return oat;
     	}
     	
@@ -672,7 +655,6 @@ public class HttpMethodBuilder
     		logger.debug("Response from exchange token: " + response);
     	}
     	oat = new OAuthAccessToken(response);
-    	exchangeMethod.releaseConnection();
  		return oat; 
 	}
     
@@ -682,7 +664,7 @@ public class HttpMethodBuilder
 	 * @param params
 	 * @return - string containing oauth realm info.
 	 */
-	public String createAuthorizationHeader(HashMap<String, String> params)
+	public String createAuthorizationHeader(Map<String, String> params)
 	{
 		boolean isFirstParam = true;
 		StringBuilder sb = new StringBuilder();
@@ -707,14 +689,22 @@ public class HttpMethodBuilder
 	 * @param method
 	 * @param parameters
 	 */
-	public void setNonOauthParams(PostMethod method, Map<String, String> parameters)
-	{
-		for (String param : parameters.keySet())
-		{
-			if (!param.startsWith("oauth"))
-			{
-				method.setParameter(param, parameters.get(param));
+	public Map<String, String> withoutOauthParams(Map<String, String> parameters) {
+		Map<String, String> result = new HashMap<String, String>();
+		for (Entry<String, String> e : parameters.entrySet()) {
+			if (!e.getKey().startsWith("oauth")) {
+				result.put(e.getKey(), e.getValue());
 			}
+		}
+		return result;
+	}
+	
+	private String createURIWithQueryString(String uri, Map<String, String> params) throws Exception {
+		String query = createNormalizedQueryString(params);
+		if (query.length() > 0) {
+			return uri + "?" + query;
+		} else {
+			return uri;
 		}
 	}
 	
@@ -723,7 +713,7 @@ public class HttpMethodBuilder
 	 * @param params
 	 * @return - string containing oauth realm info.
 	 */
-	protected String createNormalizedQueryString(HashMap<String, String> params) throws Exception
+	protected String createNormalizedQueryString(Map<String, String> params) throws Exception
 	{
 		Set<String> keySet = params.keySet();
 		String[] keys = new String[keySet.size()];
@@ -780,42 +770,42 @@ public class HttpMethodBuilder
 	 * @param uri
 	 * @return - defualt HttpMethod
 	 */
-	private GetMethod newGetMethod(String uri)
+	private HttpGet newHttpGet(String uri)
     {
-        GetMethod method = new GetMethod(uri);
-        HttpMethodParams params = method.getParams();
-        params.setCookiePolicy(CookiePolicy.IGNORE_COOKIES);
-        method.setFollowRedirects(false);
+        HttpGet method = new HttpGet(uri);
+        HttpParams params = method.getParams();
+        HttpClientParams.setCookiePolicy(params, CookiePolicy.IGNORE_COOKIES);
+        HttpClientParams.setRedirecting(params, false);
         return method;
     }
 	
 	/**
-	 * Creates an PostMethod object with default settings
+	 * Creates an HttpPost object with default settings
 	 * (Ignores cookies and doesn't follow redirects).
 	 * @param uri
 	 * @return - defualt HttpMethod
 	 */
-	private PostMethod newPostMethod(String uri)
+	private HttpPost newHttpPost(String uri)
     {
-        PostMethod method = new PostMethod(uri);
-        HttpMethodParams params = method.getParams();
-        params.setCookiePolicy(CookiePolicy.IGNORE_COOKIES);
-        method.setFollowRedirects(false);
+        HttpPost method = new HttpPost(uri);
+        HttpParams params = method.getParams();
+        HttpClientParams.setCookiePolicy(params, CookiePolicy.IGNORE_COOKIES);
+        HttpClientParams.setRedirecting(params, false);
         return method;
     }
 	
 	/**
-	 * Creates an PostMethod object with default settings
+	 * Creates an HttpPost object with default settings
 	 * (Ignores cookies and doesn't follow redirects).
 	 * @param uri
 	 * @return - defualt HttpMethod
 	 */
-	private DeleteMethod newDeleteMethod(String uri)
+	private HttpDelete newHttpDelete(String uri)
     {
-        DeleteMethod method = new DeleteMethod(uri);
-        HttpMethodParams params = method.getParams();
-        params.setCookiePolicy(CookiePolicy.IGNORE_COOKIES);
-        method.setFollowRedirects(false);
+        HttpDelete method = new HttpDelete(uri);
+        HttpParams params = method.getParams();
+        HttpClientParams.setCookiePolicy(params, CookiePolicy.IGNORE_COOKIES);
+        HttpClientParams.setRedirecting(params, false);
         return method;
     }
 	
@@ -823,11 +813,11 @@ public class HttpMethodBuilder
 	 * @param method
 	 * @param requestHeaders
 	 */
-	private HttpMethod applyRequestHeadersToMethod(HttpMethod method, Map<String, String> requestHeaders)
+	private HttpRequestBase applyRequestHeadersToMethod(HttpRequestBase method, Map<String, String> requestHeaders)
 	{
 		for (String header : requestHeaders.keySet())
 		{
-			method.setRequestHeader(header, requestHeaders.get(header));
+			method.setHeader(header, requestHeaders.get(header));
 		}
 		return method;
 	}
